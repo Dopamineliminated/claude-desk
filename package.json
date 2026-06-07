@@ -1,6 +1,6 @@
 {
   "name": "claude-desk",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "클로드 코드 데스크 — Claude Code 데스크톱 앱 (한국어, 베이지 테마)",
   "main": "src/main/main.js",
   "author": "",
@@ -25,7 +25,7 @@
     "asar": true,
     "asarUnpack": [
       "**/node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/**",
-      "**/node_modules/@homebridge/node-pty-prebuilt-multiarch/**"
+      "**/node_modules/@lydell/**"
     ],
     "win": {
       "target": "nsis",
@@ -42,7 +42,7 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.167",
-    "@homebridge/node-pty-prebuilt-multiarch": "^0.13.1"
+    "@lydell/node-pty": "^1.2.0-beta.12"
   },
   "devDependencies": {
     "electron": "^42.3.3",

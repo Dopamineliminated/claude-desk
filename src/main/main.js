@@ -12,7 +12,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, clipboard } = require('elect
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
-const pty = require('@homebridge/node-pty-prebuilt-multiarch');
+const pty = require('@lydell/node-pty');
 const { Accounts } = require('./accounts');
 
 const isDev = process.argv.includes('--dev');
