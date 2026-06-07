@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';" />
+  <title>클로드 코드 데스크</title>
+  <link rel="stylesheet" href="vendor/xterm.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app" class="app">
+    <!-- 사이드바 -->
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <div class="brand">✦ 클로드 코드 데스크</div>
+      </div>
+
+      <div class="workdir">
+        <span class="workdir-label">작업 폴더</span>
+        <button id="btn-workdir" class="workdir-path" title="작업 폴더 변경 (새 세션으로 적용)">폴더 선택…</button>
+      </div>
+
+      <button id="btn-new-session" class="btn btn-soft btn-sm side-action">↻ 새 세션 시작</button>
+
+      <div class="side-section-label">계정</div>
+      <nav id="account-list" class="account-list-side" aria-label="계정 목록"></nav>
+      <button id="btn-add-account" class="btn btn-ghost btn-sm side-action">＋ 다른 계정 추가</button>
+
+      <div class="sidebar-foot">
+        <button id="account-chip" class="account-chip" title="계정 설정">
+          <span class="avatar" id="account-avatar">계</span>
+          <span class="account-meta">
+            <span class="account-name" id="account-name">계정</span>
+            <span class="account-plan" id="account-plan">터미널</span>
+          </span>
+          <span class="chev">⚙</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- 터미널 영역 -->
+    <main class="chat">
+      <header class="chat-head">
+        <div class="chat-title" id="chat-title">세션</div>
+        <div class="chat-actions">
+          <button class="pill" id="btn-cmd-model" title="모델 변경 (/model 입력)"><span class="pill-value">모델</span></button>
+          <button class="pill" id="btn-cmd-clear" title="대화 비우기 (/clear 입력)"><span class="pill-value">정리</span></button>
+          <button class="pill" id="btn-cmd-help" title="명령어 도움말 (/help 입력)"><span class="pill-value">/명령</span></button>
+          <button id="btn-settings" class="btn btn-soft btn-sm">설정</button>
+        </div>
+      </header>
+
+      <div id="terminal" class="terminal-wrap"></div>
+    </main>
+  </div>
+
+  <!-- 설정 / 계정 모달 -->
+  <div id="settings-modal" class="modal-backdrop" hidden>
+    <div class="modal settings">
+      <div class="modal-title">설정 · 계정</div>
+      <div class="settings-body" id="settings-body"></div>
+      <div class="modal-actions">
+        <button id="settings-close" class="btn btn-soft">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="vendor/xterm.js"></script>
+  <script src="vendor/addon-fit.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>

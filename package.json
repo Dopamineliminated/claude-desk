@@ -1,0 +1,51 @@
+{
+  "name": "claude-desk",
+  "version": "0.2.0",
+  "description": "클로드 코드 데스크 — Claude Code 데스크톱 앱 (한국어, 베이지 테마)",
+  "main": "src/main/main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "dist": "electron-builder"
+  },
+  "build": {
+    "appId": "com.claudedesk.app",
+    "productName": "Claude Desk",
+    "npmRebuild": false,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/**",
+      "**/node_modules/@homebridge/node-pty-prebuilt-multiarch/**"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "artifactName": "ClaudeDesk-Setup-${version}.${ext}",
+      "shortcutName": "클로드 코드 데스크"
+    }
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.167",
+    "@homebridge/node-pty-prebuilt-multiarch": "^0.13.1"
+  },
+  "devDependencies": {
+    "electron": "^42.3.3",
+    "electron-builder": "^26.15.0"
+  }
+}
