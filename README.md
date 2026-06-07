@@ -4,11 +4,20 @@ Claude Code를 터미널 대신 **한국어·베이지 테마 GUI**로 사용하
 
 ## 특징
 
-- **임베디드 PTY 터미널**: `@homebridge/node-pty-prebuilt-multiarch` + `xterm.js`로 진짜 PTY 안에서 번들된 네이티브 `claude`를 실행
+- **임베디드 PTY 터미널**: `@lydell/node-pty`(N-API) + `xterm.js`로 진짜 PTY 안에서 번들된 네이티브 `claude`를 실행
 - **무설치 동작**: `claude.exe`를 앱에 번들하므로 받는 사람 PC에 Claude가 깔려 있지 않아도 됨
 - **멀티 계정**: 계정별로 격리된 `CLAUDE_CONFIG_DIR`을 주입해 로그인·세션 기록을 분리
 - **터미널 내 OAuth 로그인**: 로그인 URL을 자동으로 브라우저로 열고, 받은 코드는 `Ctrl+Shift+V`로 붙여넣기
 - 헤더 슬래시 바로가기(`/model`, `/clear`, `/help`)와 설정 모달(계정 추가/전환/로그아웃)
+
+## 다운로드 / 설치
+
+최신 Windows 설치파일은 **[Releases](https://github.com/Dopamineliminated/claude-desk/releases/latest)** 에서 받으세요.
+
+1. `ClaudeDesk-Setup-<version>.exe` 다운로드 후 실행
+2. 설치되면 시작 메뉴/바탕화면의 **클로드 코드 데스크** 실행
+
+> 설치파일은 용량이 커서(약 147MB) git 저장소에는 포함하지 않고 **Releases 로만** 배포합니다.
 
 ## 개발 실행
 
