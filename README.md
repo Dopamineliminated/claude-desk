@@ -7,6 +7,7 @@ Claude Code를 터미널 대신 **한국어·베이지 테마 GUI**로 사용하
 - **임베디드 PTY 터미널**: `@lydell/node-pty`(N-API) + `xterm.js`로 진짜 PTY 안에서 번들된 네이티브 `claude`를 실행
 - **무설치 동작**: `claude.exe`를 앱에 번들하므로 받는 사람 PC에 Claude가 깔려 있지 않아도 됨
 - **멀티 계정**: 계정별로 격리된 `CLAUDE_CONFIG_DIR`을 주입해 로그인·세션 기록을 분리
+- **대화 기록 사이드바**: 지난 대화가 좌측 목록에 자동으로 쌓이고(제목·시각), 클릭하면 그 대화를 이어가며(`claude --resume`), `×`로 삭제 — claude 가 계정 폴더에 남긴 실제 세션을 그대로 사용
 - **터미널 내 OAuth 로그인**: 로그인 URL을 자동으로 브라우저로 열고, 받은 코드는 `Ctrl+Shift+V`로 붙여넣기
 - 헤더 슬래시 바로가기(`/model`, `/clear`, `/help`)와 설정 모달(계정 추가/전환/로그아웃)
 
@@ -44,7 +45,7 @@ npm run dist     # → dist\ClaudeDesk-Setup-<version>.exe
 ## 구조
 
 ```
-src/main/        메인 프로세스 (main · accounts · preload)
+src/main/        메인 프로세스 (main · accounts · history · preload)
 src/renderer/    렌더러 (index.html · renderer.js · slash-commands.js · styles.css · vendor/xterm)
 assets/          아이콘
 ```
