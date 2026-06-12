@@ -1,90 +1,130 @@
 'use strict';
 
 /* =========================================================================
- * history.js — 대화 기록 저장 (메인 프로세스)
+ * history.js — 대화 기록(세션) 목록 (메인 프로세스, 터미널/네이티브 claude 기반)
  *
- * 계정별로 대화를 JSON 파일 하나씩 저장합니다.
- *   <userData>/history/<accountId>/<convoId>.json
- *
- * 한 대화 파일 구조:
- *   { id, title, cwd, sessionId, createdAt, updatedAt, messages: [...] }
- *   messages 항목:
- *     { role:'user',      text }
- *     { role:'assistant', text }
- *     { role:'tool', id, name, preview, ok, content }
+ * PTY 안의 네이티브 claude 는 대화를 계정별 설정폴더에 자동 기록한다:
+ *   <CLAUDE_CONFIG_DIR>/projects/<폴더슬러그>/<sessionId>.jsonl
+ * 이 모듈은 그 파일들을 읽어 사이드바에 보여줄 "대화 목록"을 만든다.
+ *  - 제목: claude 가 자동 생성한 ai-title → 없으면 첫 사용자 프롬프트
+ *  - 이어가기: 렌더러가 sessionId 로 `claude --resume` 실행(main.startTerm)
+ *  - 삭제: 해당 .jsonl 파일 제거
+ * 우리가 따로 저장하지 않고 claude 의 실제 세션을 그대로 활용하므로,
+ * 터미널에서 진행한 대화가 자동으로 목록에 쌓인다.
  * ========================================================================= */
 
 const fs = require('fs');
 const path = require('path');
 
-function safe(s) {
-  return String(s == null ? '_' : s).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || '_';
-}
+const HEAD_BYTES = 96 * 1024; // 제목/메타는 파일 앞부분에 있어 앞 96KB만 읽음(대용량 세션 대비)
+const TITLE_MAX = 90;
 
-class History {
-  constructor(dataDir) {
-    this.root = path.join(dataDir, 'history');
-  }
+function projectsDir(configDir) { return path.join(configDir, 'projects'); }
 
-  _dir(accountId) {
-    const d = path.join(this.root, safe(accountId));
-    try { fs.mkdirSync(d, { recursive: true }); } catch { /* noop */ }
-    return d;
-  }
-
-  /** 대화 목록(가벼운 메타만) — 최신순 */
-  list(accountId) {
-    try {
-      const d = this._dir(accountId);
-      return fs.readdirSync(d)
-        .filter((f) => f.endsWith('.json'))
-        .map((f) => {
-          try {
-            const j = JSON.parse(fs.readFileSync(path.join(d, f), 'utf-8'));
-            return {
-              id: j.id,
-              title: j.title || '새 대화',
-              cwd: j.cwd || null,
-              createdAt: j.createdAt || 0,
-              updatedAt: j.updatedAt || j.createdAt || 0,
-              count: Array.isArray(j.messages) ? j.messages.length : 0,
-            };
-          } catch { return null; }
-        })
-        .filter(Boolean)
-        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-    } catch {
-      return [];
-    }
-  }
-
-  load(accountId, id) {
-    try {
-      return JSON.parse(fs.readFileSync(path.join(this._dir(accountId), safe(id) + '.json'), 'utf-8'));
-    } catch {
-      return null;
-    }
-  }
-
-  /** 저장(있으면 덮어쓰기). 빈 대화(메시지 0)는 저장하지 않음. */
-  save(accountId, convo) {
-    if (!convo || !convo.id) return false;
-    if (!Array.isArray(convo.messages) || convo.messages.length === 0) return false;
-    const now = Date.now();
-    if (!convo.createdAt) convo.createdAt = now;
-    convo.updatedAt = now;
-    try {
-      fs.writeFileSync(path.join(this._dir(accountId), safe(convo.id) + '.json'), JSON.stringify(convo));
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  remove(accountId, id) {
-    try { fs.unlinkSync(path.join(this._dir(accountId), safe(id) + '.json')); } catch { /* noop */ }
-    return true;
+// 파일 앞부분만 읽기 (수 MB짜리 세션도 전체 파싱하지 않도록)
+function readHead(file, maxBytes) {
+  let fd;
+  try {
+    fd = fs.openSync(file, 'r');
+    const size = fs.fstatSync(fd).size;
+    const len = Math.min(maxBytes, size);
+    if (!len) return '';
+    const buf = Buffer.alloc(len);
+    fs.readSync(fd, buf, 0, len, 0);
+    return buf.toString('utf-8');
+  } catch {
+    return '';
+  } finally {
+    if (fd !== undefined) { try { fs.closeSync(fd); } catch { /* noop */ } }
   }
 }
 
-module.exports = { History };
+function textOf(message) {
+  const c = message && message.content;
+  if (typeof c === 'string') return c;
+  if (Array.isArray(c)) return c.filter((p) => p && p.type === 'text').map((p) => p.text || '').join(' ');
+  return '';
+}
+
+// 사람이 직접 친 프롬프트인지(시스템/슬래시/주입 텍스트 제외)
+function isHumanPrompt(s) {
+  const t = (s || '').trim();
+  if (!t) return false;
+  if (t[0] === '<') return false;          // <command-name> · <local-command-…> · <system-reminder> …
+  if (t.startsWith('Caveat:')) return false;
+  if (t[0] === '/') return false;          // 순수 슬래시 명령
+  return true;
+}
+
+function cleanTitle(s) {
+  const t = (s || '').replace(/\s+/g, ' ').trim();
+  return t.length > TITLE_MAX ? t.slice(0, TITLE_MAX - 1) + '…' : t;
+}
+
+// 한 세션 파일 → { title, cwd }  (대화 흔적이 없으면 title='')
+function summarize(file) {
+  const head = readHead(file, HEAD_BYTES);
+  if (!head) return { title: '', cwd: '' };
+  const lines = head.split('\n');
+  let aiTitle = '', firstHuman = '', cwd = '';
+  for (let i = 0; i < lines.length; i++) {
+    const ln = lines[i];
+    if (!ln || ln[0] !== '{') continue;
+    let o;
+    try { o = JSON.parse(ln); } catch { continue; } // 마지막 잘린 줄 등은 건너뜀
+    if (!cwd && o.cwd) cwd = o.cwd;
+    if (!aiTitle && o.type === 'ai-title' && o.aiTitle) aiTitle = String(o.aiTitle);
+    if (!firstHuman && o.type === 'user' && o.message && !o.isMeta) {
+      const t = textOf(o.message);
+      if (isHumanPrompt(t)) firstHuman = t;
+    }
+    if (aiTitle && cwd) break; // 제목+cwd 다 찾으면 조기 종료
+  }
+  return { title: cleanTitle(aiTitle || firstHuman), cwd };
+}
+
+// 활성 계정(configDir)의 모든 세션 목록 — 최근 수정순.
+// 대화 흔적이 없는(제목 못 뽑은) 빈 세션은 제외해 목록을 깔끔히 유지한다.
+function listSessions(configDir) {
+  const root = projectsDir(configDir);
+  let entries;
+  try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch { return []; }
+  const out = [];
+  for (const d of entries) {
+    if (!d.isDirectory()) continue;
+    const dir = path.join(root, d.name);
+    let files;
+    try { files = fs.readdirSync(dir); } catch { continue; }
+    for (const f of files) {
+      if (!f.endsWith('.jsonl')) continue;
+      const full = path.join(dir, f);
+      let st;
+      try { st = fs.statSync(full); } catch { continue; }
+      if (!st.size) continue;
+      const info = summarize(full);
+      if (!info.title) continue; // 아직 아무 대화도 없는 세션
+      out.push({ id: f.slice(0, -6), title: info.title, cwd: info.cwd, mtime: st.mtimeMs });
+    }
+  }
+  out.sort((a, b) => b.mtime - a.mtime);
+  return out;
+}
+
+// 세션 id 의 .jsonl 삭제 (어느 프로젝트 슬러그에 있든 찾아서 제거)
+function deleteSession(configDir, id) {
+  if (!id) return false;
+  const root = projectsDir(configDir);
+  let entries;
+  try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch { return false; }
+  let removed = false;
+  for (const d of entries) {
+    if (!d.isDirectory()) continue;
+    const file = path.join(root, d.name, id + '.jsonl');
+    if (fs.existsSync(file)) {
+      try { fs.rmSync(file, { force: true }); removed = true; } catch { /* noop */ }
+    }
+  }
+  return removed;
+}
+
+module.exports = { listSessions, deleteSession, projectsDir };

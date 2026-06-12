@@ -14,6 +14,7 @@ const os = require('os');
 const fs = require('fs');
 const pty = require('@lydell/node-pty');
 const { Accounts } = require('./accounts');
+const history = require('./history');
 
 const isDev = process.argv.includes('--dev');
 
@@ -23,7 +24,9 @@ let mainWindow = null;
 let accounts = null;
 /** 현재 PTY (node-pty IPty) */
 let term = null;
-let termMeta = { accountId: null, cwd: null };
+let termMeta = { accountId: null, cwd: null, sessionId: null };
+let sessionWatcher = null;   // 활성 계정 projects 폴더 감시(세션 목록 자동 갱신)
+let watchTimer = null;
 
 // 로그인 URL 자동 열기: PTY raw 출력(화면 wrap 영향 없는 claude 원본)에서 완성된 OAuth URL 감지
 let _authBuf = '';
@@ -77,7 +80,7 @@ function createWindow() {
   });
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
   if (isDev) mainWindow.webContents.openDevTools({ mode: 'detach' });
-  mainWindow.on('closed', () => { killTerm(); mainWindow = null; });
+  mainWindow.on('closed', () => { killTerm(); stopWatchSessions(); mainWindow = null; });
 }
 
 app.whenReady().then(() => {
@@ -108,6 +111,24 @@ function killTerm() {
   if (term) { try { term.kill(); } catch { /* noop */ } term = null; }
 }
 
+function stopWatchSessions() {
+  if (watchTimer) { clearTimeout(watchTimer); watchTimer = null; }
+  if (sessionWatcher) { try { sessionWatcher.close(); } catch { /* noop */ } sessionWatcher = null; }
+}
+
+// 활성 계정의 projects 폴더를 감시 → 세션이 추가/변경되면 렌더러에 알림(목록 자동 갱신)
+function watchSessions(configDir) {
+  stopWatchSessions();
+  const root = history.projectsDir(configDir);
+  try { fs.mkdirSync(root, { recursive: true }); } catch { /* noop */ }
+  try {
+    sessionWatcher = fs.watch(root, { recursive: true }, () => {
+      if (watchTimer) clearTimeout(watchTimer);
+      watchTimer = setTimeout(() => send('sessions:changed'), 500);
+    });
+  } catch { /* noop — 감시 실패해도 수동 새로고침은 동작 */ }
+}
+
 function startTerm(opts) {
   opts = opts || {};
   killTerm();
@@ -128,8 +149,11 @@ function startTerm(opts) {
   });
   delete env.CLAUDE_CODE_OAUTH_TOKEN; // 설정폴더 자격증명만 사용(앰비언트 토큰 격리)
 
+  const args = [];
+  if (opts.resumeId) args.push('--resume', String(opts.resumeId)); // 기존 대화 이어가기
+
   try {
-    term = pty.spawn(claude, [], {
+    term = pty.spawn(claude, args, {
       name: 'xterm-256color',
       cols: Math.max(20, opts.cols || 100),
       rows: Math.max(6, opts.rows || 30),
@@ -140,7 +164,8 @@ function startTerm(opts) {
     send('term:exit', { error: String((e && e.message) || e) });
     return false;
   }
-  termMeta = { accountId: id, cwd: useCwd };
+  termMeta = { accountId: id, cwd: useCwd, sessionId: opts.resumeId || null };
+  watchSessions(dir);
   _authBuf = ''; _lastAuthUrl = '';
   term.onData((d) => {
     send('term:data', d);
@@ -153,7 +178,7 @@ function startTerm(opts) {
     }
   });
   term.onExit((e) => { send('term:exit', e || {}); term = null; });
-  send('term:started', { accountId: id, cwd: useCwd });
+  send('term:started', { accountId: id, cwd: useCwd, sessionId: opts.resumeId || null });
   return true;
 }
 
@@ -170,6 +195,17 @@ ipcMain.handle('term:kill', () => { killTerm(); return true; });
 ipcMain.on('term:input', (_e, data) => { if (term) { try { term.write(data); } catch { /* noop */ } } });
 ipcMain.on('term:resize', (_e, { cols, rows }) => {
   if (term) { try { term.resize(Math.max(2, cols || 80), Math.max(1, rows || 24)); } catch { /* noop */ } }
+});
+
+// ─────────────────────── 대화 기록(세션) ───────────────────────
+ipcMain.handle('sessions:list', () => {
+  const id = accounts.activeId();
+  return id ? history.listSessions(accounts.configDir(id)) : [];
+});
+ipcMain.handle('sessions:delete', (_e, id) => {
+  const acc = accounts.activeId();
+  if (acc) history.deleteSession(accounts.configDir(acc), id);
+  return acc ? history.listSessions(accounts.configDir(acc)) : [];
 });
 
 ipcMain.handle('accounts:list', () => accounts.list());

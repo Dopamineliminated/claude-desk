@@ -33,6 +33,15 @@ contextBridge.exposeInMainWorld('claudeDesk', {
     return () => ipcRenderer.removeListener('term:started', h);
   },
 
+  // 대화 기록(세션) — claude 가 계정 폴더에 기록한 실제 세션
+  listSessions: () => ipcRenderer.invoke('sessions:list'),
+  deleteSession: (id) => ipcRenderer.invoke('sessions:delete', id),
+  onSessionsChanged: (cb) => {
+    const h = () => cb();
+    ipcRenderer.on('sessions:changed', h);
+    return () => ipcRenderer.removeListener('sessions:changed', h);
+  },
+
   // 계정 (각 계정 = 격리된 설정 폴더)
   listAccounts: () => ipcRenderer.invoke('accounts:list'),
   addAccount: (label) => ipcRenderer.invoke('accounts:add', label),
