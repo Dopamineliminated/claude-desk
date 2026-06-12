@@ -102,6 +102,20 @@ function bundledClaudePath() {
   const rel = ['node_modules', '@anthropic-ai', 'claude-agent-sdk-win32-x64', 'claude.exe'];
   const packaged = path.join(process.resourcesPath || '', 'app.asar.unpacked', ...rel);
   if (fs.existsSync(packaged)) return packaged;
+  // 자가복구: NSIS 차등 설치가 claude.exe 를 claude.exe.old.<ts> 로 백업만 하고
+  // 제 이름으로 되돌리지 못한 경우(설치 중 기존 앱이 켜져 파일 잠김 등) → 가장 온전한 백업을 복구.
+  try {
+    const dir = path.dirname(packaged);
+    const olds = fs.readdirSync(dir)
+      .filter((f) => f.startsWith('claude.exe.old.'))
+      .map((f) => { const p = path.join(dir, f); return { p, size: fs.statSync(p).size }; })
+      .sort((a, b) => b.size - a.size);
+    if (olds.length) {
+      fs.renameSync(olds[0].p, packaged);
+      for (let i = 1; i < olds.length; i++) { try { fs.rmSync(olds[i].p, { force: true }); } catch { /* noop */ } }
+      if (fs.existsSync(packaged)) return packaged;
+    }
+  } catch { /* noop */ }
   const dev = path.join(app.getAppPath(), ...rel);
   if (fs.existsSync(dev)) return dev;
   return process.platform === 'win32' ? 'claude.exe' : 'claude';
