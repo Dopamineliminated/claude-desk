@@ -170,8 +170,9 @@ function startTerm(opts) {
   const args = [];
   if (opts.resumeId) args.push('--resume', String(opts.resumeId)); // 기존 대화 이어가기
 
+  let proc;
   try {
-    term = pty.spawn(claude, args, {
+    proc = pty.spawn(claude, args, {
       name: 'xterm-256color',
       cols: Math.max(20, opts.cols || 100),
       rows: Math.max(6, opts.rows || 30),
@@ -182,10 +183,12 @@ function startTerm(opts) {
     send('term:exit', { error: String((e && e.message) || e) });
     return false;
   }
+  term = proc;
   termMeta = { accountId: id, cwd: useCwd, sessionId: opts.resumeId || null };
   watchSessions(dir);
   _authBuf = ''; _lastAuthUrl = '';
-  term.onData((d) => {
+  proc.onData((d) => {
+    if (term !== proc) return; // 새 세션으로 교체됨 — 옛 PTY 의 잔여 출력 무시
     send('term:data', d);
     _authBuf = (_authBuf + d).slice(-32000);
     const url = detectAuthUrl(_authBuf);
@@ -195,7 +198,14 @@ function startTerm(opts) {
       send('term:data', '\r\n\x1b[32m── 로그인 페이지를 브라우저로 열었습니다 ──\x1b[0m\r\n\x1b[33m── 인증 후 받은 코드는 [Ctrl+Shift+V] 로 붙여넣으세요 ──\x1b[0m\r\n');
     }
   });
-  term.onExit((e) => { send('term:exit', e || {}); term = null; });
+  proc.onExit((e) => {
+    // ★중요: 폴더 변경 등으로 이미 새 PTY 로 교체됐다면, 옛 PTY 의 (비동기로) 늦게 오는
+    // onExit 가 현재 term(=새 PTY)을 null 로 만들지 않게 막는다. 이 가드가 없으면 옛 세션
+    // 종료가 새 세션의 term 참조를 끊어 입력이 통째로 안 먹는다(폴더 변경 후 '먹통' 버그).
+    if (term !== proc) return;
+    send('term:exit', e || {});
+    term = null;
+  });
   send('term:started', { accountId: id, cwd: useCwd, sessionId: opts.resumeId || null });
   return true;
 }
@@ -239,9 +249,8 @@ ipcMain.handle('dialog:pickFolder', async () => {
     title: '작업 폴더 선택',
     properties: ['openDirectory', 'createDirectory'],
   });
-  // 네이티브 대화상자가 닫힌 뒤 창/웹콘텐츠에 포커스를 되돌린다. 안 그러면
-  // 폴더 변경 후 claude '이 폴더 신뢰?' 프롬프트에서 키 입력이 안 먹어
-  // (터미널이 키보드 포커스를 잃은 상태) Yes 를 못 누른다.
+  // 네이티브 대화상자가 닫힌 뒤 창/웹콘텐츠 포커스를 되돌려, 폴더 변경 직후
+  // 터미널에 바로 키 입력이 되도록 한다.
   try { mainWindow.focus(); mainWindow.webContents.focus(); } catch { /* noop */ }
   if (res.canceled || !res.filePaths.length) return null;
   return res.filePaths[0];

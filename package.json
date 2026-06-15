@@ -1,6 +1,6 @@
 {
   "name": "claude-desk",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "클로드 코드 데스크 — Claude Code 데스크톱 앱 (한국어, 베이지 테마)",
   "main": "src/main/main.js",
   "author": "",

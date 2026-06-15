@@ -82,7 +82,7 @@ api.onTermStarted((e) => {
   if (e && e.sessionId) state.currentSessionId = e.sessionId;
   setTimeout(doFit, 30);
   term.focus();
-  setTimeout(() => term.focus(), 120); // 대화상자/리레이아웃 직후 포커스 보정(신뢰 프롬프트 입력 가능하게)
+  setTimeout(() => term.focus(), 120); // 대화상자/리레이아웃 직후 터미널 포커스 보정
   refreshSessions(); // 시작 직후 + claude가 세션 파일을 만든 뒤 목록 반영
 });
 api.onTermExit((e) => {
