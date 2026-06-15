@@ -82,6 +82,7 @@ api.onTermStarted((e) => {
   if (e && e.sessionId) state.currentSessionId = e.sessionId;
   setTimeout(doFit, 30);
   term.focus();
+  setTimeout(() => term.focus(), 120); // 대화상자/리레이아웃 직후 포커스 보정(신뢰 프롬프트 입력 가능하게)
   refreshSessions(); // 시작 직후 + claude가 세션 파일을 만든 뒤 목록 반영
 });
 api.onTermExit((e) => {
@@ -97,6 +98,8 @@ api.onSessionsChanged(() => refreshSessions());
 const ro = new ResizeObserver(() => doFit());
 ro.observe(el.terminal);
 window.addEventListener('resize', doFit);
+// 창이 다시 포커스를 받으면(폴더 선택 대화상자·다른 창에서 복귀 등) 터미널로 포커스 복원
+window.addEventListener('focus', () => { try { term.focus(); } catch { /* noop */ } });
 
 /* ───────── 터미널 복사/붙여넣기 (로그인 URL 자동 열기는 메인이 raw PTY 에서 처리) ───────── */
 
@@ -125,6 +128,33 @@ el.terminal.addEventListener('contextmenu', async (e) => {
   const sel = term.getSelection();
   if (sel) { api.copyText(sel); term.clearSelection(); }
   else { const t = await api.readText(); if (t) api.termInput(t); }
+});
+
+/* ───────── 마우스 휠로 대화 기록 스크롤 ─────────
+ * 이 xterm 빌드에선 .xterm-viewport 의 scrollHeight 가 늘지 않아 브라우저 기본
+ * 휠 스크롤이 먹지 않는다(스크롤백 버퍼 자체는 8000줄 정상 보관). 또 claude 가
+ * 잠깐 마우스 추적을 켜면 휠이 PTY 로 가로채여 더 안 움직인다.
+ * → 휠 이벤트를 직접 받아 term.scrollLines() 로 스크롤백을 움직인다.
+ *   (대체 화면 버퍼=전체화면 오버레이/메뉴는 스크롤백이 없으니 앱에 맡긴다) */
+function wheelToLines(ev) {
+  if (ev.deltaMode === 1) return signLines(ev.deltaY);              // 줄 단위
+  if (ev.deltaMode === 2) return signLines(ev.deltaY * term.rows);  // 페이지 단위
+  const vp = el.terminal.querySelector('.xterm-viewport');          // 픽셀 → 셀 높이만큼
+  let cell = vp && term.rows ? vp.clientHeight / term.rows : 0;
+  if (!(cell > 4 && cell < 60)) cell = 18;
+  return signLines(ev.deltaY / cell);
+}
+function signLines(n) {
+  if (n > 0) return Math.max(1, Math.round(n));
+  if (n < 0) return Math.min(-1, Math.round(n));
+  return 0;
+}
+term.attachCustomWheelEventHandler((ev) => {
+  const active = term.buffer && term.buffer.active;
+  if (active && active.type === 'alternate') return true; // 오버레이/메뉴: 기본 동작 유지
+  const lines = wheelToLines(ev);
+  if (lines) term.scrollLines(lines);
+  return false; // 우리가 처리 — xterm 기본 휠/마우스 전달 차단
 });
 
 /* ───────────────────── 세션 시작 / 이어가기 ───────────────────── */

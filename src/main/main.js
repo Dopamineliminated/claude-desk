@@ -160,6 +160,10 @@ function startTerm(opts) {
     TERM: 'xterm-256color',
     FORCE_COLOR: '1',
     COLORTERM: 'truecolor',
+    // 번들 claude.exe 의 자동 업데이트 차단: 켜져 있으면 claude 가 app.asar.unpacked 안의
+    // claude.exe 를 claude.exe.old.<ts> 로 rename 후 교체를 시도하다 실패해 바이너리가
+    // 통째로 사라질 수 있다(앱 깨짐). 번들은 고정 버전이므로 자동업데이트가 불필요.
+    DISABLE_AUTOUPDATER: '1',
   });
   delete env.CLAUDE_CODE_OAUTH_TOKEN; // 설정폴더 자격증명만 사용(앰비언트 토큰 격리)
 
@@ -235,6 +239,10 @@ ipcMain.handle('dialog:pickFolder', async () => {
     title: '작업 폴더 선택',
     properties: ['openDirectory', 'createDirectory'],
   });
+  // 네이티브 대화상자가 닫힌 뒤 창/웹콘텐츠에 포커스를 되돌린다. 안 그러면
+  // 폴더 변경 후 claude '이 폴더 신뢰?' 프롬프트에서 키 입력이 안 먹어
+  // (터미널이 키보드 포커스를 잃은 상태) Yes 를 못 누른다.
+  try { mainWindow.focus(); mainWindow.webContents.focus(); } catch { /* noop */ }
   if (res.canceled || !res.filePaths.length) return null;
   return res.filePaths[0];
 });
