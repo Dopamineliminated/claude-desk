@@ -149,13 +149,24 @@ function signLines(n) {
   if (n < 0) return Math.min(-1, Math.round(n));
   return 0;
 }
-term.attachCustomWheelEventHandler((ev) => {
+// claude(v2.1.x) TUI 는 출력을 scrollback 에 쌓지 않고 화면을 직접 다시 그린다
+// (PTY 측정: alt-screen·mouse 안 켬 / 휠 측정: baseY=0, .xterm-viewport scrollHeight==clientHeight).
+// 따라서 xterm 의 scrollLines·네이티브 휠로는 움직일 과거가 없다. 대신 claude 는 PageUp/PageDown
+// 키로 자체 스크롤을 지원하므로, 휠을 그 키로 변환해 PTY 로 보낸다.
+// (휠은 관성으로 다발 발생 → 줄 수를 누적해 일정 단위마다 한 번씩만 전송)
+let _wheelAccum = 0;
+el.terminal.addEventListener('wheel', (ev) => {
   const active = term.buffer && term.buffer.active;
-  if (active && active.type === 'alternate') return true; // 오버레이/메뉴: 기본 동작 유지
+  if (active && active.type === 'alternate') return; // 전체화면 메뉴(대체버퍼)는 claude 에 맡김
   const lines = wheelToLines(ev);
-  if (lines) term.scrollLines(lines);
-  return false; // 우리가 처리 — xterm 기본 휠/마우스 전달 차단
-});
+  if (!lines) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  _wheelAccum += lines;
+  const perStep = 6; // 휠 누적 6줄마다 PageUp/PageDown 1회 (체감 속도 — 너무 빠르면 키우기)
+  while (_wheelAccum <= -perStep) { api.termInput('\x1b[5~'); _wheelAccum += perStep; } // 위 → PageUp
+  while (_wheelAccum >= perStep) { api.termInput('\x1b[6~'); _wheelAccum -= perStep; }  // 아래 → PageDown
+}, { capture: true, passive: false });
 
 /* ───────────────────── 세션 시작 / 이어가기 ───────────────────── */
 // opts: { accountId?, cwd?, resumeId? }  — resumeId 있으면 그 대화를 이어감(claude --resume)
